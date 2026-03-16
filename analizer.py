@@ -3,9 +3,9 @@ import re
 class Analizer:
     def __init__(self):
         self.patterns = {
-            'KEYWORD': r'\b(public|private|static|void|int|boolean|class|return|if|else|while|import|package)\b',
+            'KEYWORD': r'\b(public|private|static|void|class|return|if|else|while|import|package)\b',
 
-            'TYPE': r'\b(String|int|float|double|bool)\b',
+            'TYPE': r'\b(String|int|float|double|boolean)\b',
 
             'STRING_LITERAL': r'"(?:\\.|[^"\\])*"',
             'NUMBER': r'\b\d+(\.\d+)?\b',
@@ -14,7 +14,8 @@ class Analizer:
             'IDENTIFIER': r'\b[a-zA-Z_][a-zA-Z0-9_]*\b',
 
             'OPERATOR': r'(==|!=|<=|>=|&&|\|\||[+\-*/=<>])',
-            'SEPARATOR': r'[;,.(){}\[\]]',
+
+            'DELIMITER': r'[;,.(){}\[\]]',
         }
 
     def tokenize(self, code):
