@@ -2,10 +2,13 @@ import re
 
 class Analizer:
     def __init__(self):
-        self.patterns = {
-            'KEYWORD': r'\b(public|private|static|void|class|return|if|else|while|import|package)\b',
+        self.PATTERNS = {
+            'KEYWORD': r'\b(abstract|continue|for|new|switch|assert|default|goto|package|synchronized|boolean|do'
+                       r'|if|private|this|break|double|implements|protected|throw|byte|else|import|public|throws'
+                       r'|case|enum|instanceof|return|transient|catch|extends|int|short|try|char|final|interface'
+                       r'|static|void|class|finally|long|strictfp|volatile|const|float|native|super|while)\b',
 
-            'TYPE': r'\b(String|int|float|double|boolean)\b',
+            'TYPE': r'\b(byte|short|int|long|float|double|boolean|char|String)\b',
 
             'STRING_LITERAL': r'"(?:\\.|[^"\\])*"',
             'NUMBER': r'\b\d+(\.\d+)?\b',
@@ -13,7 +16,8 @@ class Analizer:
 
             'IDENTIFIER': r'\b[a-zA-Z_][a-zA-Z0-9_]*\b',
 
-            'OPERATOR': r'(==|!=|<=|>=|&&|\|\||[+\-*/=<>])',
+            'OPERATOR': r'(>>>=|>>=|<<=|>>>|>>|<<|==|!=|<=|>=|&&|\|\||'
+                        r'\+=|-=|\*=|/=|%=|&=|\^=|\|=|\+\+|--|[\+\-*/%&|^!<>?=])',
 
             'DELIMITER': r'[;,.(){}\[\]]',
         }
@@ -25,7 +29,7 @@ class Analizer:
         while code:
             match = None
 
-            for token_type, pattern in self.patterns.items():
+            for token_type, pattern in self.PATTERNS.items():
                 match = re.match(pattern, code)
 
                 if match:
