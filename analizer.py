@@ -3,12 +3,14 @@ import re
 class Analizer:
     def __init__(self):
         self.PATTERNS = {
-            'KEYWORD': r'\b(abstract|continue|for|new|switch|assert|default|goto|package|synchronized|boolean|do'
-                       r'|if|private|this|break|double|implements|protected|throw|byte|else|import|public|throws'
-                       r'|case|enum|instanceof|return|transient|catch|extends|int|short|try|char|final|interface'
-                       r'|static|void|class|finally|long|strictfp|volatile|const|float|native|super|while)\b',
+            'MODIFIER': r'\b(public|private|protected|static|final|abstract|volatile|transient|strictfp)\b',
 
-            'TYPE': r'\b(byte|short|int|long|float|double|boolean|char|String)\b',
+            'TYPE': r'\b(byte|short|int|long|float|double|boolean|char|String|void)\b',
+
+            'KEYWORD': r'\b(continue|for|new|switch|assert|default|goto|package|synchronized|boolean|do'
+                       r'|if|this|break|double|implements|throw|byte|else|import|throws'
+                       r'|case|enum|instanceof|return|catch|extends|int|short|try|char|interface'
+                       r'|void|class|finally|long|const|float|native|super|while)\b',
 
             'STRING_LITERAL': r'"(?:\\.|[^"\\])*"',
             'NUMBER': r'\b\d+(\.\d+)?\b',
