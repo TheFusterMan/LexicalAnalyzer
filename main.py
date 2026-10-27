@@ -1,6 +1,7 @@
 from analizer import Analizer
 from ast_structures import *
 from parser import Parser
+from generator import Generator
 
 filename = "Code.java"
 code_to_tokenize = ""
@@ -17,5 +18,9 @@ for token in tokens:
 print("\n--- 2. Синтаксический анализ (AST) ---")
 parser = Parser(tokens)
 ast = parser.parse()
-
 Parser.print_ast(ast)
+
+print("\n--- 3. Генерация целевого кода на C++ ---")
+generator = Generator()
+cpp_code = generator.generate(ast)
+print(cpp_code)
