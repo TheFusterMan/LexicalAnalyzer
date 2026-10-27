@@ -1,5 +1,6 @@
 from ast_structures import *
 
+
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
@@ -34,12 +35,39 @@ class Parser:
 
     def parse(self):
         statements = []
+        if self.current_token() and self.current_token()[1] == 'package':
+            statements.append(self.parse_package())
+
+        while self.current_token() and self.current_token()[1] == 'import':
+            statements.append(self.parse_import())
+
         while self.current_token() is not None:
             statements.append(self.parse_statement())
         return Program(statements)
 
+    def parse_package(self):
+        self.consume('KEYWORD', 'package')
+        name = self.consume('IDENTIFIER')[1]
+        while self.current_token() and self.current_token()[1] == '.':
+            self.consume('DELIMITER', '.')
+            name += "." + self.consume('IDENTIFIER')[1]
+        self.consume('DELIMITER', ';')
+        return PackageDeclaration(name)
+
+    def parse_import(self):
+        self.consume('KEYWORD', 'import')
+        path = self.consume('IDENTIFIER')[1]
+        while self.current_token() and self.current_token()[1] == '.':
+            self.consume('DELIMITER', '.')
+            path += "." + self.consume('IDENTIFIER')[1]
+        self.consume('DELIMITER', ';')
+        return ImportDeclaration(path)
+
     def parse_statement(self):
         token = self.current_token()
+        if token is None:
+            raise SyntaxError("EOF")
+
         if token[0] == 'MODIFIER' or (token[0] == 'KEYWORD' and token[1] == 'class'):
             modifiers = self.parse_modifiers()
             if self.current_token()[1] == 'class':
@@ -57,6 +85,21 @@ class Parser:
 
         if token[0] == 'KEYWORD' and token[1] == 'while':
             return self.parse_while()
+
+        if token[0] == 'KEYWORD' and token[1] == 'do':
+            return self.parse_do_while()
+
+        if token[0] == 'KEYWORD' and token[1] == 'for':
+            return self.parse_for()
+
+        if token[0] == 'KEYWORD' and token[1] == 'if':
+            return self.parse_if()
+
+        if token[0] == 'KEYWORD' and token[1] == 'return':
+            return self.parse_return()
+
+        if token[0] == 'KEYWORD' and token[1] == 'const':
+            return self.parse_constant_declaration()
 
         if token[0] == 'IDENTIFIER':
             return self.parse_assignment_or_method_call()
@@ -105,6 +148,91 @@ class Parser:
         body = self.parse_block()
         return WhileStatement(condition, body)
 
+    def parse_do_while(self):
+        self.consume('KEYWORD', 'do')
+        body = self.parse_block()
+        self.consume('KEYWORD', 'while')
+        self.consume('DELIMITER', '(')
+        condition = self.parse_expression()
+        self.consume('DELIMITER', ')')
+        self.consume('DELIMITER', ';')
+        return DoWhileStatement(body, condition)
+
+    def parse_for(self):
+        self.consume('KEYWORD', 'for')
+        self.consume('DELIMITER', '(')
+
+        init = None
+        if self.current_token() and self.current_token()[1] != ';':
+            if self.current_token()[0] == 'TYPE':
+                init = self.parse_variable_declaration_no_semi()
+            else:
+                init = self.parse_assignment_or_expression_no_semi()
+        self.consume('DELIMITER', ';')
+
+        condition = None
+        if self.current_token() and self.current_token()[1] != ';':
+            condition = self.parse_expression()
+        self.consume('DELIMITER', ';')
+
+        update = None
+        if self.current_token() and self.current_token()[1] != ')':
+            update = self.parse_assignment_or_expression_no_semi()
+        self.consume('DELIMITER', ')')
+
+        body = self.parse_block()
+        return ForStatement(init, condition, update, body)
+
+    def parse_variable_declaration_no_semi(self):
+        var_type = self.consume('TYPE')[1]
+        var_name = self.consume('IDENTIFIER')[1]
+        value = None
+        if self.current_token() and self.current_token()[1] == '=':
+            self.consume('OPERATOR', '=')
+            value = self.parse_expression()
+        return VariableDeclaration(var_type, var_name, value)
+
+    def parse_assignment_or_expression_no_semi(self):
+        if self.current_token() and self.current_token()[0] == 'IDENTIFIER' and self.pos + 1 < len(self.tokens) and \
+                self.tokens[self.pos + 1][1] == '=':
+            target = self.consume('IDENTIFIER')[1]
+            self.consume('OPERATOR', '=')
+            value = self.parse_expression()
+            return Assignment(target, value)
+        else:
+            return self.parse_expression()
+
+    def parse_constant_declaration(self):
+        self.consume('KEYWORD', 'const')
+        var_type = self.consume('TYPE')[1]
+        var_name = self.consume('IDENTIFIER')[1]
+        self.consume('OPERATOR', '=')
+        value = self.parse_expression()
+        self.consume('DELIMITER', ';')
+        return ConstantDeclaration(var_type, var_name, value)
+
+    def parse_if(self):
+        self.consume('KEYWORD', 'if')
+        self.consume('DELIMITER', '(')
+        condition = self.parse_expression()
+        self.consume('DELIMITER', ')')
+        then_branch = self.parse_statement()
+        else_branch = None
+
+        if self.current_token() and self.current_token()[0] == 'KEYWORD' and self.current_token()[1] == 'else':
+            self.consume('KEYWORD', 'else')
+            else_branch = self.parse_statement()
+
+        return IfStatement(condition, then_branch, else_branch)
+
+    def parse_return(self):
+        self.consume('KEYWORD', 'return')
+        value = None
+        if self.current_token() and self.current_token()[1] != ';':
+            value = self.parse_expression()
+        self.consume('DELIMITER', ';')
+        return ReturnStatement(value)
+
     def parse_variable_declaration(self):
         var_type = self.consume()[1]
         var_name = self.consume('IDENTIFIER')[1]
@@ -118,7 +246,6 @@ class Parser:
         return VariableDeclaration(var_type, var_name, value)
 
     def parse_assignment_or_method_call(self):
-
         target = self.consume('IDENTIFIER')[1]
         while self.current_token() and self.current_token()[1] == '.':
             self.consume('DELIMITER', '.')
@@ -126,13 +253,11 @@ class Parser:
 
         token = self.current_token()
 
-
         if token[1] == '=':
             self.consume('OPERATOR', '=')
             value = self.parse_expression()
             self.consume('DELIMITER', ';')
             return Assignment(target, value)
-
 
         elif token[1] == '(':
             self.consume('DELIMITER', '(')
@@ -167,6 +292,8 @@ class Parser:
             return Identifier(token[1])
         elif token[0] == 'STRING_LITERAL':
             return StringLiteral(token[1])
+        elif token[0] == 'CHAR_LITERAL':
+            return CharLiteral(token[1])
         else:
             raise SyntaxError(f"Ожидалось число, строка или идентификатор, получено {token}")
 
@@ -176,6 +303,10 @@ class Parser:
             print(indent + "Program:")
             for stmt in node.statements:
                 Parser.print_ast(stmt, indent + "  ")
+        elif isinstance(node, PackageDeclaration):
+            print(indent + f"Package: {node.name}")
+        elif isinstance(node, ImportDeclaration):
+            print(indent + f"Import: {node.path}")
         elif isinstance(node, ClassDeclaration):
             print(indent + f"Class: {node.name} (Mods: {node.modifiers})")
             for stmt in node.body:
@@ -191,6 +322,32 @@ class Parser:
             print(indent + "While:")
             Parser.print_ast(node.condition, indent + "  [Cond] ")
             Parser.print_ast(node.body, indent + "  ")
+        elif isinstance(node, DoWhileStatement):
+            print(indent + "DoWhile:")
+            Parser.print_ast(node.body, indent + "  ")
+            Parser.print_ast(node.condition, indent + "  [Cond] ")
+        elif isinstance(node, ForStatement):
+            print(indent + "For:")
+            if node.init:
+                Parser.print_ast(node.init, indent + "  [Init] ")
+            if node.condition:
+                Parser.print_ast(node.condition, indent + "  [Cond] ")
+            if node.update:
+                Parser.print_ast(node.update, indent + "  [Update] ")
+            Parser.print_ast(node.body, indent + "  ")
+        elif isinstance(node, ConstantDeclaration):
+            print(indent + f"ConstantDecl (Type: {node.var_type}, Name: {node.name})")
+            Parser.print_ast(node.value, indent + "  |= ")
+        elif isinstance(node, IfStatement):
+            print(indent + "If:")
+            Parser.print_ast(node.condition, indent + "  [Cond] ")
+            Parser.print_ast(node.then_branch, indent + "  [Then] ")
+            if node.else_branch:
+                Parser.print_ast(node.else_branch, indent + "  [Else] ")
+        elif isinstance(node, ReturnStatement):
+            print(indent + "Return:")
+            if node.value:
+                Parser.print_ast(node.value, indent + "  ")
         elif isinstance(node, VariableDeclaration):
             print(indent + f"VariableDecl (Type: {node.var_type}, Name: {node.name})")
             if node.value:
@@ -210,5 +367,7 @@ class Parser:
             print(indent + f"Number({node.value})")
         elif isinstance(node, StringLiteral):
             print(indent + f"String({node.value})")
+        elif isinstance(node, CharLiteral):
+            print(indent + f"Char({node.value})")
         elif isinstance(node, Identifier):
             print(indent + f"Identifier({node.name})")

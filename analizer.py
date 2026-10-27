@@ -13,7 +13,8 @@ class Analizer:
                        r'|void|class|finally|long|const|float|native|super|while)\b',
 
             'STRING_LITERAL': r'"(?:\\.|[^"\\])*"',
-            'NUMBER': r'\b\d+(\.\d+)?\b',
+            'CHAR_LITERAL': r"'(?:\\.|[^'\\])'",
+            'NUMBER': r'\b\d+(\.\d+)?([eE][+-]?\d+)?\b',
             'BOOLEAN_LITERAL': r'\b(true|false)\b',
 
             'IDENTIFIER': r'\b[a-zA-Z_][a-zA-Z0-9_]*\b',
@@ -25,6 +26,8 @@ class Analizer:
         }
 
     def tokenize(self, code):
+        code = re.sub(r'//.*', '', code)
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
         code = code.lstrip()
         tokens = []
 

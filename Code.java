@@ -1,10 +1,19 @@
+package com.company;
+import java.lang.Math;
+
 public class Main {
     public static void main(String[] args) {
-        int x = 10;
-        while (x > 0) {
-            int y = x * 2;
-            x = x - 1;
+        const int MAX = 100;
+
+        for (int i = 0; i < 10; i = i + 1) {
+            System.out.println(i);
         }
-        System.out.println("Готово");
+
+        int x = 0;
+        do {
+            x = x + 1;
+        } while (x < 5);
+
+        return 0;
     }
 }
