@@ -8,45 +8,26 @@ from analizer import Analizer
 from parser import Parser
 from generator import Generator
 
-DEFAULT_JAVA_CODE = """public class Main {
-    public static void main(String[] args) {
-        int x = 5;
-        while (x > 0) {
-            System.out.println(x);
-            x = x - 1;
-        }
-    }
-}"""
-
 
 class TranslatorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Транслятор Java -> C++ | Курсовой проект")
+        self.title("Транслятор Java -> C++")
         self.geometry("1100, 750")
         self.minsize(900, 600)
-
-        # Настройка цветовой палитры (Dark / Light)
-        ctk.set_appearance_mode("Dark")
-        ctk.set_default_color_theme("blue")
 
         self.init_ui()
 
     def init_ui(self):
         # 1. Верхняя панель инструментов (Toolbar)
         self.top_frame = ctk.CTkFrame(self, corner_radius=10)
-        self.top_frame.pack(fill="x", padx=15, pady=(15, 10))
+        self.top_frame.pack(fill="x", padx=5, pady=(15, 10))
 
         self.btn_open = ctk.CTkButton(
-            self.top_frame, text="📂 Открыть .java", command=self.load_file, width=130
+            self.top_frame, text="📂 Выбрать", command=self.load_file, width=100
         )
-        self.btn_open.pack(side="left", padx=10, pady=10)
-
-        self.btn_sample = ctk.CTkButton(
-            self.top_frame, text="✨ Пример", command=self.load_sample, width=100, fg_color="gray"
-        )
-        self.btn_sample.pack(side="left", padx=5, pady=10)
+        self.btn_open.pack(side="left", padx=5, pady=10)
 
         self.btn_clear = ctk.CTkButton(
             self.top_frame, text="🗑 Очистить", command=self.clear_all, width=100, fg_color="#c0392b", hover_color="#962d22"
@@ -56,20 +37,19 @@ class TranslatorApp(ctk.CTk):
         # Главная кнопка трансляции
         self.btn_translate = ctk.CTkButton(
             self.top_frame,
-            text="▶ Транслировать в C++",
+            text="▶ Транслировать",
             command=self.translate_code,
-            width=200,
+            width=150,
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color="#27ae60",
             hover_color="#1e8449"
         )
-        self.btn_translate.pack(side="left", padx=20, pady=10)
+        self.btn_translate.pack(side="left", padx=5, pady=10)
 
         # Переключатель темы
         self.theme_switch = ctk.CTkSwitch(
             self.top_frame, text="Темная тема", command=self.toggle_theme
         )
-        self.theme_switch.select()
         self.theme_switch.pack(side="right", padx=15, pady=10)
 
         # 2. Центральная область редакторов кода (Split View)
@@ -131,9 +111,6 @@ class TranslatorApp(ctk.CTk):
             self.tab_ast, font=ctk.CTkFont(family="Consolas", size=12), wrap="none"
         )
         self.txt_ast.pack(fill="both", expand=True)
-
-        # Загружаем стартовый пример
-        self.load_sample()
 
     # ==================== Функционал и логика ====================
 
@@ -199,10 +176,6 @@ class TranslatorApp(ctk.CTk):
                 content = f.read()
                 self.txt_java.delete("1.0", "end")
                 self.txt_java.insert("1.0", content)
-
-    def load_sample(self):
-        self.txt_java.delete("1.0", "end")
-        self.txt_java.insert("1.0", DEFAULT_JAVA_CODE)
 
     def clear_all(self):
         self.txt_java.delete("1.0", "end")
