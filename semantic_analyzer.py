@@ -88,6 +88,13 @@ class SemanticAnalyzer:
 
     def visit_Program(self, node: Program):
         for stmt in node.statements:
+            if isinstance(stmt, MethodDeclaration):
+                if stmt.name not in self.symbols.scopes[-1]:
+                    self.symbols.define(
+                        Symbol(name=stmt.name, type_name=stmt.return_type, kind="method")
+                    )
+
+        for stmt in node.statements:
             self.visit(stmt)
 
     def visit_ClassDeclaration(self, node: ClassDeclaration):
@@ -96,19 +103,23 @@ class SemanticAnalyzer:
         self.symbols.enter_scope()
 
         for stmt in node.body:
+            if isinstance(stmt, MethodDeclaration):
+                if stmt.name not in self.symbols.scopes[-1]:
+                    self.symbols.define(
+                        Symbol(name=stmt.name, type_name=stmt.return_type, kind="method")
+                    )
+
+        for stmt in node.body:
             self.visit(stmt)
 
         self.symbols.exit_scope()
 
     def visit_MethodDeclaration(self, node: MethodDeclaration):
         # 1. Регистрация сигнатуры метода во внешней области
-        self.symbols.define(
-            Symbol(
-                name=node.name,
-                type_name=node.return_type,
-                kind="method"
+        if node.name not in self.symbols.scopes[-1]:
+            self.symbols.define(
+                Symbol(name=node.name, type_name=node.return_type, kind="method")
             )
-        )
 
         # 2. Входим в область видимости тела метода
         self.symbols.enter_scope()
@@ -117,15 +128,8 @@ class SemanticAnalyzer:
 
         # Если переданы параметры (например, int a, double b)
         # В учебном парсере параметры идут строками [type, name]
-        i = 0
-        while i < len(node.params):
-            param_type = node.params[i]
-            if i + 1 < len(node.params):
-                param_name = node.params[i + 1]
-                self.symbols.define(Symbol(name=param_name, type_name=param_type, kind="variable"))
-                i += 2
-            else:
-                break
+        for param in node.params:
+            self.symbols.define(Symbol(name=param.name, type_name=param.var_type, kind="variable"))
 
         # Разбор тела метода
         self.visit(node.body)
@@ -168,20 +172,22 @@ class SemanticAnalyzer:
         )
 
     def visit_Assignment(self, node: Assignment):
-        symbol = self.symbols.resolve(node.target)
-        if not symbol:
-            raise SemanticError(f"Использование необъявленной переменной '{node.target}'.")
-
-        if symbol.kind == "constant":
-            raise SemanticError(
-                f"Попытка изменения значения константы '{node.target}'. "
-                f"Присваивание константам запрещено."
-            )
+        if isinstance(node.target, str):
+            symbol = self.symbols.resolve(node.target)
+            if not symbol:
+                raise SemanticError(f"Использование необъявленной переменной '{node.target}'.")
+            if symbol.kind == "constant":
+                raise SemanticError(f"Попытка изменения значения константы '{node.target}'.")
+            target_type = symbol.type_name
+            target_name = node.target
+        else:
+            target_type = self.visit(node.target)
+            target_name = "элемент массива"
 
         val_type = self.visit(node.value)
-        if not self._is_type_compatible(symbol.type_name, val_type):
+        if not self._is_type_compatible(target_type, val_type):
             raise SemanticError(
-                f"Несовместимость типов при присваивании: переменной '{node.target}' типа '{symbol.type_name}' "
+                f"Несовместимость типов при присваивании: для '{target_name}' типа '{target_type}' "
                 f"нельзя присвоить значение типа '{val_type}'."
             )
 
@@ -333,3 +339,70 @@ class SemanticAnalyzer:
             if type_order.index(source) <= type_order.index(target):
                 return True
         return False
+
+# ==================== Массивы и обращения ====================
+
+    def visit_ArrayInitializer(self, node: ArrayInitializer) -> str:
+        elem_types = [self.visit(elem) for elem in node.elements]
+        elem_type = elem_types[0] if elem_types else "int"
+        return f"{elem_type}[]"
+
+    def visit_ArrayCreation(self, node: ArrayCreation) -> str:
+        for dim in node.dimensions:
+            if dim is not None:
+                dim_type = self.visit(dim)
+                if dim_type not in self.NUMERIC_TYPES:
+                    raise SemanticError("Размерность массива должна быть целым числом.")
+        if node.initializer:
+            return self.visit(node.initializer)
+        return node.element_type + "[]" * len(node.dimensions)
+
+    def visit_ArrayAccess(self, node: ArrayAccess) -> str:
+        arr_type = self.visit(node.array)
+        idx_type = self.visit(node.index)
+        if idx_type not in self.NUMERIC_TYPES:
+            raise SemanticError("Индекс массива должен быть числом.")
+        if not arr_type.endswith("[]"):
+            raise SemanticError(f"Попытка индексации переменной не-массива типа '{arr_type}'.")
+        return arr_type[:-2]
+
+    def visit_MemberAccess(self, node: MemberAccess) -> str:
+        target_type = self.visit(node.target)
+        if node.member == "length" and target_type.endswith("[]"):
+            return "int"
+        raise SemanticError(f"Поле '{node.member}' не найдено у типа '{target_type}'.")
+
+    # ==================== Унарные операции и Switch ====================
+
+    def visit_UnaryOperation(self, node: UnaryOperation) -> str:
+        op_type = self.visit(node.operand)
+        if node.operator in ('++', '--', '+', '-', '~'):
+            if op_type not in self.NUMERIC_TYPES:
+                raise SemanticError(f"Оператор '{node.operator}' применим только к числам.")
+            return op_type
+        if node.operator == '!':
+            if op_type != 'boolean':
+                raise SemanticError("Оператор '!' применим только к типу boolean.")
+            return 'boolean'
+        return op_type
+
+    def visit_ExpressionStatement(self, node: ExpressionStatement):
+        self.visit(node.expression)
+
+    def visit_SwitchStatement(self, node: SwitchStatement):
+        expr_type = self.visit(node.expression)
+        self.symbols.enter_scope()
+        for case in node.cases:
+            if case.value is not None:
+                case_type = self.visit(case.value)
+                if not self._is_type_compatible(expr_type, case_type):
+                    raise SemanticError(f"Тип метки case '{case_type}' не совпадает с типом switch '{expr_type}'.")
+            for stmt in case.statements:
+                self.visit(stmt)
+        self.symbols.exit_scope()
+
+    def visit_BreakStatement(self, node: BreakStatement):
+        pass
+
+    def visit_ContinueStatement(self, node: ContinueStatement):
+        pass
