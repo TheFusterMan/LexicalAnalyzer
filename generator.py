@@ -463,7 +463,7 @@ class Generator:
             return self._flatten_cout_args(node.left) + self._flatten_cout_args(node.right)
         return [self.generate(node)]
 
-    def gen_MethodCall(self, node: MethodCall) -> str:
+    def gen_MethodCall(self, node: MethodCall):
         if node.target in ("System.out.println", "System.out.print"):
             self.needs_iostream = True
 
@@ -471,7 +471,7 @@ class Generator:
             for arg in node.args:
                 all_parts.extend(self._flatten_cout_args(arg))
 
-            args_code = ''.join(f' << {self.generate(arg)}' for arg in node.args)
+            args_code = ''.join(f' << {part}' for part in all_parts)
             ending = ' << std::endl' if node.target == 'System.out.println' else ''
             return f"(std::cout << std::boolalpha{args_code}{ending})"
 
