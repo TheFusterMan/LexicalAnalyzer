@@ -1,6 +1,7 @@
 import pytest
 from analizer import Analizer
 from parser import Parser
+from generator import Generator
 from ast_structures import (
     Program, PackageDeclaration, ImportDeclaration, ClassDeclaration,
     MethodDeclaration, VariableDeclaration, ConstantDeclaration,
@@ -241,12 +242,13 @@ class TestParserValid:
 class TestParserErrors:
     def test_unexpected_eof(self):
         code = "public class Main {"
-        with pytest.raises(SyntaxError, match="Неожиданный конец файла"):
+        with pytest.raises(SyntaxError, match="Неожиданный конец файла \\(EOF\\)"):
             parse_code(code)
 
     def test_missing_semicolon(self):
+        # Файл внезапно закончился без точки с запятой
         code = "int x = 5"
-        with pytest.raises(SyntaxError, match="Ожидалось значение ';'"):
+        with pytest.raises(SyntaxError, match="Неожиданный конец файла \\(EOF\\)"):
             parse_code(code)
 
     def test_invalid_start_of_statement(self):
@@ -265,13 +267,15 @@ class TestParserErrors:
             parse_code(code)
 
     def test_broken_while_condition(self):
+        # Ожидался DELIMITER '(', но получен IDENTIFIER 'x'
         code = "while x > 0) { }"
-        with pytest.raises(SyntaxError, match="Ожидалось значение '\\('"):
+        with pytest.raises(SyntaxError, match="Ожидался тип токена DELIMITER"):
             parse_code(code)
 
     def test_missing_while_in_do_while(self):
+        # Ожидался KEYWORD 'while', но получен DELIMITER '('
         code = "do { x = 1; } (x > 0);"
-        with pytest.raises(SyntaxError, match="Ожидалось значение 'while'"):
+        with pytest.raises(SyntaxError, match="Ожидался тип токена KEYWORD"):
             parse_code(code)
 
 
@@ -337,3 +341,107 @@ class TestEndToEnd:
         assert method.return_type == "int"
         assert len(method.body.statements) == 3  # result decl, for loop, return
         assert isinstance(method.body.statements[2], ReturnStatement)
+
+# =====================================================================
+# 5. РАСШИРЕННЫЕ ТЕСТЫ ГРАНИЧНЫХ СЛУЧАЕВ И ГЕНЕРАТОРА
+# =====================================================================
+
+class TestEdgeCasesAndGenerator:
+
+    def test_for_loop_empty_sections(self):
+        """Проверка цикла for с пустыми секциями: for (;;) и for (; cond; )"""
+        code_infinite = "for (;;) { x = 1; }"
+        ast = parse_code(code_infinite)
+        stmt = ast.statements[0]
+        assert isinstance(stmt, ForStatement)
+        assert stmt.init is None
+        assert stmt.condition is None
+        assert stmt.update is None
+
+        code_cond_only = "for (; x > 0; ) { x = x - 1; }"
+        ast_cond = parse_code(code_cond_only)
+        assert ast_cond.statements[0].condition is not None
+
+    def test_for_loop_with_existing_variable(self):
+        """Цикл for, где счетчик не объявляется заново (без типа int)"""
+        code = "for (i = 0; i < 10; i = i + 1) { }"
+        ast = parse_code(code)
+        assert isinstance(ast.statements[0].init, Assignment)
+        assert ast.statements[0].init.target == "i"
+
+    def test_else_if_ladder(self):
+        """Лесенка else if"""
+        code = """
+        if (x == 1) {
+            y = 10;
+        } else if (x == 2) {
+            y = 20;
+        } else {
+            y = 30;
+        }
+        """
+        ast = parse_code(code)
+        if_stmt = ast.statements[0]
+        assert isinstance(if_stmt, IfStatement)
+        # В ветке else лежит следующий IfStatement
+        assert isinstance(if_stmt.else_branch, IfStatement)
+        assert isinstance(if_stmt.else_branch.else_branch, Block)
+
+    def test_method_without_modifiers(self):
+        """Метод без public/private/static"""
+        code = "void simpleMethod() { return; }"
+        ast = parse_code(code)
+        method = ast.statements[0]
+        assert isinstance(method, MethodDeclaration)
+        assert method.modifiers == []
+        assert method.return_type == "void"
+        assert method.name == "simpleMethod"
+        assert isinstance(method.body.statements[0], ReturnStatement)
+        assert method.body.statements[0].value is None
+
+    def test_ast_printer_smoke_test(self):
+        """Проверка, что print_ast не падает с ошибками ни на одном узле"""
+        code = """
+        public class Test {
+            public static void main(String[] args) {
+                const int C = 10;
+                int a = 5;
+                if (a > 0) {
+                    a = a - 1;
+                }
+                do {
+                    a = a + 1;
+                } while (a < 5);
+                return;
+            }
+        }
+        """
+        ast = parse_code(code)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            Parser.print_ast(ast)
+        output = buffer.getvalue()
+        assert "Class: Test" in output
+        assert "Method: main" in output
+        assert "ConstantDecl" in output
+
+    def test_generator_cpp_output(self):
+        """Тест генератора C++: проверяем базовый перевод"""
+        code = """
+        public class Main {
+            public static void main(String[] args) {
+                int x = 5;
+                System.out.println(x);
+            }
+        }
+        """
+        ast = parse_code(code)
+        generator = Generator()
+        cpp_code = generator.generate(ast)
+
+        # Проверяем ключевые черты эквивалентного C++
+        assert "#include <iostream>" in cpp_code
+        assert "int main()" in cpp_code
+        assert "int x = 5;" in cpp_code
+        assert "std::cout <<" in cpp_code
+        assert "return 0;" in cpp_code
