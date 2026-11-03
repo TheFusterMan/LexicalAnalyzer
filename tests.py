@@ -448,3 +448,33 @@ class TestEdgeCasesAndGenerator:
         assert "int x = 5;" in cpp_code
         assert "std::cout <<" in cpp_code
         assert "return 0;" in cpp_code
+
+    def test_println_string_concatenation_unrolling(self):
+        """Проверка, что бинарный плюс внутри println разворачивается в поток <<"""
+        code = """
+        public class Main {
+            public static void main(String[] args) {
+                int x = 5;
+                System.out.println("x = " + x + ";");
+            }
+        }
+        """
+        ast = parse_code(code)
+        cpp_code = Generator().generate(ast)
+        # Проверяем, что вместо ("x = " + x + ";") сгенерировалась потоковая цепочка
+        assert '<< "x = " << x << ";"' in cpp_code
+        assert "#include <iostream>" in cpp_code
+
+    def test_math_library_generation(self):
+        """Проверка замены Math.* на std::* и подключения <cmath>"""
+        code = """
+        public class Main {
+            public static void main(String[] args) {
+                double val = Math.sqrt(16.0);
+            }
+        }
+        """
+        ast = parse_code(code)
+        cpp_code = Generator().generate(ast)
+        assert "#include <cmath>" in cpp_code
+        assert "std::sqrt(16.0)" in cpp_code

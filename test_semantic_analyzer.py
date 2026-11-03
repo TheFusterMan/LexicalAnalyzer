@@ -145,6 +145,35 @@ class TestSemanticAnalyzer(unittest.TestCase):
             run_semantic_check(code)
         self.assertIn("типом void не может возвращать значение", str(ctx.exception))
 
+# 10. Проверка стандартных вызовов библиотеки Math.* (Прикол 6)
+    def test_math_library_calls(self):
+        code = """
+        public class Main {
+            public static void main(String[] args) {
+                double a = Math.sqrt(25.0);
+                double b = Math.pow(2.0, 3.0);
+            }
+        }
+        """
+        try:
+            run_semantic_check(code)
+        except SemanticError as e:
+            self.fail(f"Семантический анализатор ошибся на вызове Math: {e}")
+
+    # 11. Проверка конкатенации строк и чисел в выводе (Прикол 1)
+    def test_string_concatenation_in_println(self):
+        code = """
+        public class Main {
+            public static void main(String[] args) {
+                int x = 10;
+                System.out.println("Count: " + x + " pcs.");
+            }
+        }
+        """
+        try:
+            run_semantic_check(code)
+        except SemanticError as e:
+            self.fail(f"Ошибка при конкатенации строки в println: {e}")
 
 if __name__ == "__main__":
     unittest.main()

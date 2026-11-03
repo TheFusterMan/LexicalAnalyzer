@@ -352,6 +352,16 @@ PROGRAMS = [
         System.out.println();
         return;
     ''', '2\ntrue\nfalse\n\n', '', id='single-statement-bodies-and-output-grouping'),
+    pytest.param('''
+            int count = 42;
+            System.out.println("Total: " + count + " items");
+            String prefix = "Status: ";
+            System.out.println(prefix + "OK");
+        ''', 'Total: 42 items\nStatus: OK\n', '', id='string-concatenation-in-println'),
+    pytest.param('''
+        System.out.println(Math.sqrt(16.0));
+        System.out.println(Math.pow(2.0, 3.0));
+    ''', '4\n8\n', '', id='math-library-execution'),
 ]
 
 
