@@ -5,6 +5,10 @@ class ASTNode:
     pass
 
 @dataclass
+class BooleanLiteral(ASTNode):
+    value: str
+
+@dataclass
 class NumberLiteral(ASTNode):
     value: str
 
