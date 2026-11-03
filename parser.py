@@ -294,6 +294,8 @@ class Parser:
             return StringLiteral(token[1])
         elif token[0] == 'CHAR_LITERAL':
             return CharLiteral(token[1])
+        elif token[0] == 'BOOLEAN_LITERAL':
+            return BooleanLiteral(token[1])
         else:
             raise SyntaxError(f"Ожидалось число, строка или идентификатор, получено {token}")
 

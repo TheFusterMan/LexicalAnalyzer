@@ -320,6 +320,9 @@ class SemanticAnalyzer:
             raise SemanticError(f"Переменная '{node.name}' не объявлена перед использованием.")
         return symbol.type_name
 
+    def visit_BooleanLiteral(self, node: BooleanLiteral) -> str:
+        return "boolean"
+
     def _is_type_compatible(self, target: str, source: str) -> bool:
         """Проверка совместимости типов (с учетом неявного приведения)"""
         if target == source:

@@ -205,3 +205,6 @@ class Generator:
 
     def gen_Identifier(self, node: Identifier) -> str:
         return node.name
+
+    def gen_BooleanLiteral(self, node: BooleanLiteral) -> str:
+        return node.value
