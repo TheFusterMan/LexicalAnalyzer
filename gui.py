@@ -7,7 +7,7 @@ from tkinter import filedialog, messagebox
 from analizer import Analizer
 from parser import Parser
 from generator import Generator
-
+from semantic_analyzer import SemanticAnalyzer, SemanticError
 
 class TranslatorApp(ctk.CTk):
     def __init__(self):
@@ -144,7 +144,11 @@ class TranslatorApp(ctk.CTk):
                 Parser.print_ast(ast)
             self.txt_ast.insert("1.0", ast_buffer.getvalue())
 
-            # 3. Генерация целевого C++ кода
+            # 3. СЕМАНТИЧЕСКИЙ АНАЛИЗ
+            semantic_checker = SemanticAnalyzer()
+            semantic_checker.analyze(ast)
+
+            # 4. Генерация целевого C++ кода
             generator = Generator()
             cpp_code = generator.generate(ast)
             self.txt_cpp.insert("1.0", cpp_code)
