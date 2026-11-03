@@ -177,7 +177,10 @@ class SemanticAnalyzer:
             if not symbol:
                 raise SemanticError(f"Использование необъявленной переменной '{node.target}'.")
             if symbol.kind == "constant":
-                raise SemanticError(f"Попытка изменения значения константы '{node.target}'.")
+                raise SemanticError(
+                    f"Попытка изменения значения константы '{node.target}'. "
+                    f"Присваивание константам запрещено."
+                )
             target_type = symbol.type_name
             target_name = node.target
         else:
@@ -255,11 +258,15 @@ class SemanticAnalyzer:
                 )
 
     def visit_MethodCall(self, node: MethodCall):
+        if isinstance(node.target, str) and node.target.startswith("Math."):
+            for arg in node.args:
+                self.visit(arg)
+            return "double"
+
         symbol = self.symbols.resolve(node.target)
         if not symbol:
             raise SemanticError(f"Вызов необъявленного метода '{node.target}'.")
 
-        # Проверяем аргументы
         for arg in node.args:
             self.visit(arg)
 

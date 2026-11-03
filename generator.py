@@ -449,9 +449,28 @@ class Generator:
             return f"{self.indent()}return {self.generate(node.value)};"
         return f"{self.indent()}return 0;" if self.in_main else f"{self.indent()}return;"
 
+    def _is_string_op(self, node):
+        """Проверяет, участвует ли в операции + строковый литерал"""
+        if isinstance(node, StringLiteral):
+            return True
+        if isinstance(node, BinaryOperation) and node.operator == '+':
+            return self._is_string_op(node.left) or self._is_string_op(node.right)
+        return False
+
+    def _flatten_cout_args(self, node):
+        """Рекурсивно разворачивает бинарные плюсы в список аргументов потока cout"""
+        if isinstance(node, BinaryOperation) and node.operator == '+' and self._is_string_op(node):
+            return self._flatten_cout_args(node.left) + self._flatten_cout_args(node.right)
+        return [self.generate(node)]
+
     def gen_MethodCall(self, node: MethodCall) -> str:
         if node.target in ("System.out.println", "System.out.print"):
             self.needs_iostream = True
+
+            all_parts = []
+            for arg in node.args:
+                all_parts.extend(self._flatten_cout_args(arg))
+
             args_code = ''.join(f' << {self.generate(arg)}' for arg in node.args)
             ending = ' << std::endl' if node.target == 'System.out.println' else ''
             return f"(std::cout << std::boolalpha{args_code}{ending})"
