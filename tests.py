@@ -1,3 +1,6 @@
+import io
+from contextlib import redirect_stdout
+
 import pytest
 from analizer import Analizer
 from parser import Parser

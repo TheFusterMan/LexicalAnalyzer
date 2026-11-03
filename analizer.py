@@ -20,18 +20,28 @@ class Analizer:
             'IDENTIFIER': r'\b[a-zA-Z_][a-zA-Z0-9_]*\b',
 
             'OPERATOR': r'(>>>=|>>=|<<=|>>>|>>|<<|==|!=|<=|>=|&&|\|\||'
-                        r'\+=|-=|\*=|/=|%=|&=|\^=|\|=|\+\+|--|[\+\-*/%&|^!<>?=])',
+                        r'\+=|-=|\*=|/=|%=|&=|\^=|\|=|\+\+|--|[\+\-*/%&|^!~<>?=])',
 
-            'DELIMITER': r'[;,.(){}\[\]]',
+            'DELIMITER': r'[:;,.(){}\[\]]',
         }
 
     def tokenize(self, code):
-        code = re.sub(r'//.*', '', code)
-        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
         code = code.lstrip()
         tokens = []
 
         while code:
+            # Комментарии пропускаются между токенами, чтобы // и /* внутри
+            # строковых и символьных литералов оставались частью литерала.
+            if code.startswith('//'):
+                newline = code.find('\n')
+                code = code[newline + 1:].lstrip() if newline >= 0 else ''
+                continue
+            if code.startswith('/*'):
+                end = code.find('*/', 2)
+                if end < 0:
+                    raise SyntaxError("Незакрытый многострочный комментарий")
+                code = code[end + 2:].lstrip()
+                continue
             match = None
 
             for token_type, pattern in self.PATTERNS.items():
