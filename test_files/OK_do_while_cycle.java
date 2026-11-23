@@ -1,6 +1,6 @@
 public class LogicCheck {
     public static void main(String[] args) {
-        const int LIMIT = 5;
+        final int LIMIT = 5;
         int count = 0;
         boolean isRunning = false;
 

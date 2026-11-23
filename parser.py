@@ -4,7 +4,6 @@ from ast_structures import *
 
 
 class Parser:
-    # Приоритеты бинарных операций Java (от низкого к высокому).
     PRECEDENCE = {
         '||': 1, '&&': 2, '|': 3, '^': 4, '&': 5,
         '==': 6, '!=': 6,
@@ -18,8 +17,9 @@ class Parser:
         '<<=', '>>=', '>>>=',
     }
 
-    def __init__(self, tokens):
+    def __init__(self, tokens, token_lines=None):
         self.tokens = tokens
+        self.token_lines = token_lines
         self.pos = 0
         self.loop_depth = 0
         self.switch_depth = 0
@@ -33,18 +33,36 @@ class Parser:
             return self.tokens[self.pos]
         return None
 
+    def current_line(self):
+        if not self.token_lines:
+            return None
+        if self.pos < len(self.token_lines):
+            return self.token_lines[self.pos]
+        return self.token_lines[-1]
+
+    def syntax_error(self, message, line=None):
+        err_line = line if line is not None else self.current_line()
+        if err_line is not None:
+            return SyntaxError(f"Строка {err_line}: {message}")
+        return SyntaxError(message)
+
     def consume(self, expected_type=None, expected_value=None):
+        line = self.current_line()
         token = self.current_token()
         if token is None:
-            raise SyntaxError("Неожиданный конец файла (EOF)")
+            raise self.syntax_error("Неожиданный конец файла (EOF)", line)
 
         token_type, token_value = token
 
         if expected_type and token_type != expected_type:
-            raise SyntaxError(f"Ожидался тип токена {expected_type}, получено {token_type} ('{token_value}')")
+            raise self.syntax_error(
+                f"Ожидался тип токена {expected_type}, получено {token_type} ('{token_value}')", line
+            )
 
         if expected_value is not None and token_value != expected_value:
-            raise SyntaxError(f"Ожидалось значение '{expected_value}', получено '{token_value}'")
+            raise self.syntax_error(
+                f"Ожидалось значение '{expected_value}', получено '{token_value}'", line
+            )
 
         self.pos += 1
         return token
@@ -93,84 +111,124 @@ class Parser:
         self.consume('DELIMITER', ';')
         return ImportDeclaration(path)
 
-    def parse_statement(self):
+    def skip_type(self, pos):
+        if pos >= len(self.tokens) or self.tokens[pos][0] not in ('TYPE', 'IDENTIFIER'):
+            return None
+        p = pos + 1
+        if p < len(self.tokens) and self.tokens[p][1] == '<':
+            depth = 1
+            p += 1
+            while p < len(self.tokens) and depth > 0:
+                t_type, t_val = self.tokens[p]
+                if t_val == '<':
+                    depth += 1
+                elif t_val == '>':
+                    depth -= 1
+                elif t_val not in (',', '[', ']') and t_type not in ('TYPE', 'IDENTIFIER'):
+                    return None
+                p += 1
+            if depth != 0:
+                return None
+        while p + 1 < len(self.tokens) and self.tokens[p][1] == '[' and self.tokens[p + 1][1] == ']':
+            p += 2
+        return p
+
+    def is_method_declaration(self):
+        end = self.skip_type(self.pos)
+        if end is None or end + 1 >= len(self.tokens):
+            return False
+        return self.tokens[end][0] == 'IDENTIFIER' and self.tokens[end + 1][1] == '('
+
+    def is_constructor_declaration(self):
+        return (
+            self.pos + 1 < len(self.tokens)
+            and self.tokens[self.pos][0] == 'IDENTIFIER'
+            and self.tokens[self.pos + 1][1] == '('
+        )
+
+    def is_variable_declaration(self):
+        end = self.skip_type(self.pos)
+        if end is None or end >= len(self.tokens):
+            return False
+        if self.tokens[end][0] != 'IDENTIFIER':
+            return False
+        return end + 1 >= len(self.tokens) or self.tokens[end + 1][1] != '('
+
+    def parse_statement(self, in_class=False):
         line = self.current_line()
-        node = self._parse_statement_inner()
+        node = self._parse_statement_inner(in_class=in_class)
         if node is not None and not hasattr(node, '_line'):
             node._line = line
         return node
-    
-        def _parse_statement_inner_statement(self):
-            token = self.current_token()
-            if token is None:
-                raise SyntaxError("EOF")
 
-            if token[0] == 'MODIFIER' or (token[0] == 'KEYWORD' and token[1] == 'class'):
-                modifiers = self.parse_modifiers()
-                if self.at('class'):
-                    return self.parse_class_declaration(modifiers)
-                if self.is_method_declaration():
-                    return self.parse_method_declaration(modifiers)
-                declaration = self.parse_variable_declaration()
-                if 'final' in modifiers:
-                    if declaration.value is None:
-                        raise SyntaxError("Для final требуется инициализатор")
-                    return ConstantDeclaration(declaration.var_type, declaration.name, declaration.value)
-                return declaration
+    def _parse_statement_inner(self, in_class=False):
+        while self.current_token() and self.current_token()[0] == 'ANNOTATION':
+            self.consume('ANNOTATION')
 
-            if token[0] == 'TYPE':
-                if self.is_method_declaration():
-                    return self.parse_method_declaration([])
-                return self.parse_variable_declaration()
+        token = self.current_token()
+        if token is None:
+            raise self.syntax_error("EOF")
 
-            if token[0] == 'DELIMITER' and token[1] == '{':
-                return self.parse_block()
+        if token[0] == 'MODIFIER' or (token[0] == 'KEYWORD' and token[1] == 'class'):
+            modifiers = self.parse_modifiers()
+            if self.at('class'):
+                return self.parse_class_declaration(modifiers)
+            if in_class and self.is_constructor_declaration():
+                return self.parse_constructor_declaration(modifiers)
+            if self.is_method_declaration():
+                return self.parse_method_declaration(modifiers)
+            declaration = self.parse_variable_declaration(modifiers)
+            if 'final' in modifiers:
+                if declaration.value is None:
+                    raise self.syntax_error("Для final требуется инициализатор")
+                return ConstantDeclaration(declaration.var_type, declaration.name, declaration.value, modifiers)
+            return declaration
 
-            if token[0] == 'KEYWORD' and token[1] == 'while':
-                return self.parse_while()
+        if token[0] == 'TYPE' or self.is_method_declaration() or self.is_variable_declaration():
+            if self.is_method_declaration():
+                return self.parse_method_declaration([])
+            return self.parse_variable_declaration()
 
-            if token[0] == 'KEYWORD' and token[1] == 'do':
-                return self.parse_do_while()
+        if in_class and self.is_constructor_declaration():
+            return self.parse_constructor_declaration([])
 
-            if token[0] == 'KEYWORD' and token[1] == 'for':
-                return self.parse_for()
+        if token[0] == 'DELIMITER' and token[1] == '{':
+            return self.parse_block()
 
-            if token[0] == 'KEYWORD' and token[1] == 'if':
-                return self.parse_if()
+        if token[0] == 'KEYWORD' and token[1] == 'while':
+            return self.parse_while()
 
-            if token[0] == 'KEYWORD' and token[1] == 'switch':
-                return self.parse_switch()
+        if token[0] == 'KEYWORD' and token[1] == 'do':
+            return self.parse_do_while()
 
-            if token[0] == 'KEYWORD' and token[1] in ('break', 'continue'):
-                keyword = self.consume('KEYWORD')[1]
-                if keyword == 'break' and not (self.loop_depth or self.switch_depth):
-                    raise SyntaxError("break допустим только внутри цикла или switch")
-                if keyword == 'continue' and not self.loop_depth:
-                    raise SyntaxError("continue допустим только внутри цикла")
-                self.consume('DELIMITER', ';')
-                return BreakStatement() if keyword == 'break' else ContinueStatement()
+        if token[0] == 'KEYWORD' and token[1] == 'for':
+            return self.parse_for()
 
-            if token[0] == 'KEYWORD' and token[1] == 'return':
-                return self.parse_return()
+        if token[0] == 'KEYWORD' and token[1] == 'if':
+            return self.parse_if()
 
-            if token[0] == 'KEYWORD' and token[1] == 'const':
-                return self.parse_constant_declaration()
+        if token[0] == 'KEYWORD' and token[1] == 'switch':
+            return self.parse_switch()
 
-            if token[0] == 'IDENTIFIER' or token[1] in ('++', '--', '('):
-                return self.parse_assignment_or_method_call()
+        if token[0] == 'KEYWORD' and token[1] in ('break', 'continue'):
+            keyword = self.consume('KEYWORD')[1]
+            if keyword == 'break' and not (self.loop_depth or self.switch_depth):
+                raise self.syntax_error("break допустим только внутри цикла или switch")
+            if keyword == 'continue' and not self.loop_depth:
+                raise self.syntax_error("continue допустим только внутри цикла")
+            self.consume('DELIMITER', ';')
+            return BreakStatement() if keyword == 'break' else ContinueStatement()
 
-            raise SyntaxError(f"Неизвестное начало выражения: {token}")
+        if token[0] == 'KEYWORD' and token[1] == 'return':
+            return self.parse_return()
 
-    def is_method_declaration(self):
-        position = self.pos
-        if position >= len(self.tokens) or self.tokens[position][0] != 'TYPE':
-            return False
-        position += 1
-        while position + 1 < len(self.tokens) and self.tokens[position][1] == '[' and self.tokens[position + 1][1] == ']':
-            position += 2
-        return (position + 1 < len(self.tokens)
-                and self.tokens[position][0] == 'IDENTIFIER'
-                and self.tokens[position + 1][1] == '(')
+        if token[0] == 'KEYWORD' and token[1] == 'const':
+            return self.parse_constant_declaration()
+
+        if token[0] == 'IDENTIFIER' or token[1] in ('++', '--', '(', 'this'):
+            return self.parse_assignment_or_method_call()
+
+        raise self.syntax_error(f"Неизвестное начало выражения: {token}")
 
     def parse_array_suffix(self):
         suffix = ''
@@ -181,10 +239,27 @@ class Parser:
         return suffix
 
     def parse_type(self, allow_void=False):
-        var_type = self.consume('TYPE')[1]
+        token = self.current_token()
+        if token and token[0] in ('TYPE', 'IDENTIFIER'):
+            var_type = self.consume()[1]
+        else:
+            raise self.syntax_error(f"Ожидался тип данных, получено {token}")
+
+        if self.at('<'):
+            self.consume('OPERATOR', '<')
+            inner_parts = []
+            while not self.at('>'):
+                inner_parts.append(self.parse_type())
+                if self.at(','):
+                    self.consume('DELIMITER', ',')
+                else:
+                    break
+            self.consume('OPERATOR', '>')
+            var_type += '<' + ', '.join(inner_parts) + '>'
+
         suffix = self.parse_array_suffix()
         if var_type == 'void' and (not allow_void or suffix):
-            raise SyntaxError("void допустим только как тип возврата метода")
+            raise self.syntax_error("void допустим только как тип возврата метода")
         return var_type + suffix
 
     def parse_class_declaration(self, modifiers):
@@ -194,17 +269,13 @@ class Parser:
 
         body = []
         while self.current_token() and self.current_token()[1] != '}':
-            body.append(self.parse_statement())
+            body.append(self.parse_statement(in_class=True))
 
         self.consume('DELIMITER', '}')
         return ClassDeclaration(modifiers, name, body)
 
-    def parse_method_declaration(self, modifiers):
-        return_type = self.parse_type(allow_void=True)
-        name = self.consume('IDENTIFIER')[1]
-
+    def parse_parameters(self):
         self.consume('DELIMITER', '(')
-
         params = []
         if not self.at(')'):
             while True:
@@ -218,9 +289,26 @@ class Parser:
                     break
                 self.consume('DELIMITER', ',')
         self.consume('DELIMITER', ')')
+        return params
 
+    def parse_constructor_declaration(self, modifiers):
+        line = self.current_line()
+        name = self.consume('IDENTIFIER')[1]
+        params = self.parse_parameters()
         body = self.parse_block()
-        return MethodDeclaration(modifiers, return_type, name, params, body)
+        node = ConstructorDeclaration(modifiers, name, params, body)
+        node._line = line
+        return node
+
+    def parse_method_declaration(self, modifiers):
+        line = self.current_line()
+        return_type = self.parse_type(allow_void=True)
+        name = self.consume('IDENTIFIER')[1]
+        params = self.parse_parameters()
+        body = self.parse_block()
+        node = MethodDeclaration(modifiers, return_type, name, params, body)
+        node._line = line
+        return node
 
     def parse_block(self):
         self.consume('DELIMITER', '{')
@@ -248,13 +336,28 @@ class Parser:
         self.consume('DELIMITER', ';')
         return DoWhileStatement(body, condition)
 
+    def is_foreach_header(self):
+        end = self.skip_type(self.pos)
+        if end is None or end + 1 >= len(self.tokens):
+            return False
+        return self.tokens[end][0] == 'IDENTIFIER' and self.tokens[end + 1][1] == ':'
+
     def parse_for(self):
         self.consume('KEYWORD', 'for')
         self.consume('DELIMITER', '(')
 
+        if self.is_foreach_header():
+            var_type = self.parse_type()
+            var_name = self.consume('IDENTIFIER')[1]
+            self.consume('DELIMITER', ':')
+            iterable = self.parse_expression()
+            self.consume('DELIMITER', ')')
+            body = self.parse_loop_body()
+            return ForEachStatement(var_type, var_name, iterable, body)
+
         init = None
         if self.current_token() and self.current_token()[1] != ';':
-            if self.current_token()[0] == 'TYPE':
+            if self.current_token()[0] == 'TYPE' or self.is_variable_declaration():
                 init = self.parse_variable_declaration_no_semi()
             else:
                 init = self.parse_assignment_or_expression_no_semi()
@@ -280,7 +383,8 @@ class Parser:
         finally:
             self.loop_depth -= 1
 
-    def parse_variable_declaration_no_semi(self):
+    def parse_variable_declaration_no_semi(self, modifiers=None):
+        line = self.current_line()
         var_type = self.parse_type()
         var_name = self.consume('IDENTIFIER')[1]
         var_type += self.parse_array_suffix()
@@ -288,9 +392,12 @@ class Parser:
         if self.current_token() and self.current_token()[1] == '=':
             self.consume('OPERATOR', '=')
             value = self.parse_initializer(var_type)
-        return VariableDeclaration(var_type, var_name, value)
+        node = VariableDeclaration(var_type, var_name, value, modifiers or [])
+        node._line = line
+        return node
 
     def parse_assignment_or_expression_no_semi(self):
+        line = self.current_line()
         expression = self.parse_expression()
         token = self.current_token()
         if token and token[1] in self.ASSIGNMENT_OPERATORS:
@@ -298,12 +405,17 @@ class Parser:
             operator = self.consume('OPERATOR')[1]
             value = self.parse_expression()
             target = expression.name if isinstance(expression, Identifier) else expression
-            return Assignment(target, value, operator)
+            node = Assignment(target, value, operator)
+            node._line = line
+            return node
         if isinstance(expression, MethodCall):
+            expression._line = line
             return expression
         if isinstance(expression, UnaryOperation) and expression.operator in ('++', '--'):
-            return ExpressionStatement(expression)
-        raise SyntaxError("Ожидалось присваивание, вызов метода или инкремент/декремент")
+            node = ExpressionStatement(expression)
+            node._line = line
+            return node
+        raise self.syntax_error("Ожидалось присваивание, вызов метода или инкремент/декремент", line)
 
     @staticmethod
     def require_assignable(expression):
@@ -338,19 +450,19 @@ class Parser:
                     self.consume('KEYWORD', 'case')
                     value = self.parse_expression()
                     if any(case.value == value for case in cases):
-                        raise SyntaxError("Повторная метка case в switch")
+                        raise self.syntax_error("Повторная метка case в switch")
                     self.consume('DELIMITER', ':')
                     cases.append(SwitchCase(value, []))
                 elif self.at('default'):
                     if has_default:
-                        raise SyntaxError("Повторный default в switch")
+                        raise self.syntax_error("Повторный default в switch")
                     self.consume('KEYWORD', 'default')
                     self.consume('DELIMITER', ':')
                     has_default = True
                     cases.append(SwitchCase(None, []))
                 else:
                     if not cases:
-                        raise SyntaxError("В switch ожидалось case или default")
+                        raise self.syntax_error("В switch ожидалось case или default")
                     cases[-1].statements.append(self.parse_statement())
             self.consume('DELIMITER', '}')
         finally:
@@ -379,8 +491,8 @@ class Parser:
         self.consume('DELIMITER', ';')
         return ReturnStatement(value)
 
-    def parse_variable_declaration(self):
-        declaration = self.parse_variable_declaration_no_semi()
+    def parse_variable_declaration(self, modifiers=None):
+        declaration = self.parse_variable_declaration_no_semi(modifiers)
         self.consume('DELIMITER', ';')
         return declaration
 
@@ -392,7 +504,7 @@ class Parser:
     def parse_initializer(self, var_type):
         if self.at('{'):
             if not var_type.endswith('[]'):
-                raise SyntaxError("Инициализатор {...} допустим только для массива")
+                raise self.syntax_error("Инициализатор {...} допустим только для массива")
             return self.parse_array_initializer()
         return self.parse_expression()
 
@@ -408,11 +520,35 @@ class Parser:
         self.consume('DELIMITER', '}')
         return ArrayInitializer(elements)
 
-    def parse_array_creation(self):
+    def parse_new_expression(self):
         self.consume('KEYWORD', 'new')
-        element_type = self.consume('TYPE')[1]
+        token = self.current_token()
+        if not token or token[0] not in ('TYPE', 'IDENTIFIER'):
+            raise self.syntax_error(f"Ожидался тип после new, получено {token}")
+
+        is_primitive = token[0] == 'TYPE'
+        element_type = self.consume()[1]
+
+        type_args = []
+        if not is_primitive and self.at('<'):
+            self.consume('OPERATOR', '<')
+            if not self.at('>'):
+                while True:
+                    type_args.append(self.parse_type())
+                    if not self.at(','):
+                        break
+                    self.consume('DELIMITER', ',')
+            self.consume('OPERATOR', '>')
+            if self.at('('):
+                return self._parse_object_creation_args(element_type, type_args)
+            raise self.syntax_error("Ожидалось '(' после дженерика")
+
+        if not is_primitive and self.at('('):
+            return self._parse_object_creation_args(element_type, type_args)
+
         if element_type == 'void':
-            raise SyntaxError("Массив не может иметь тип void")
+            raise self.syntax_error("Массив не может иметь тип void")
+
         dimensions = []
         empty_dimension = False
         while self.at('['):
@@ -422,17 +558,29 @@ class Parser:
                 dimensions.append(None)
             else:
                 if empty_dimension:
-                    raise SyntaxError("Размер после пустого измерения массива недопустим")
+                    raise self.syntax_error("Размер после пустого измерения массива недопустим")
                 dimensions.append(self.parse_expression())
             self.consume('DELIMITER', ']')
         if not dimensions:
-            raise SyntaxError("После new ожидались измерения массива")
+            raise self.syntax_error("После new ожидались измерения массива")
         initializer = self.parse_array_initializer() if self.at('{') else None
         if initializer is not None and any(size is not None for size in dimensions):
-            raise SyntaxError("Нельзя одновременно указать размер массива и инициализатор")
+            raise self.syntax_error("Нельзя одновременно указать размер массива и инициализатор")
         if initializer is None and all(size is None for size in dimensions):
-            raise SyntaxError("Для массива требуется размер или инициализатор")
+            raise self.syntax_error("Для массива требуется размер или инициализатор")
         return ArrayCreation(element_type, dimensions, initializer)
+
+    def _parse_object_creation_args(self, class_name, type_args):
+        self.consume('DELIMITER', '(')
+        args = []
+        if not self.at(')'):
+            while True:
+                args.append(self.parse_expression())
+                if not self.at(','):
+                    break
+                self.consume('DELIMITER', ',')
+        self.consume('DELIMITER', ')')
+        return ObjectCreation(class_name, type_args, args)
 
     def parse_expression(self, min_precedence=1):
         left = self.parse_unary()
@@ -443,6 +591,12 @@ class Parser:
             operator = self.consume('OPERATOR')[1]
             right = self.parse_expression(precedence + 1)
             left = BinaryOperation(left, operator, right)
+        if min_precedence == 1 and self.at('?'):
+            self.consume('OPERATOR', '?')
+            true_expr = self.parse_expression(1)
+            self.consume('DELIMITER', ':')
+            false_expr = self.parse_expression(1)
+            left = TernaryOperation(left, true_expr, false_expr)
         return left
 
     def parse_unary(self):
@@ -503,11 +657,16 @@ class Parser:
             self.consume('DELIMITER', ')')
             return expression
         if self.at('new'):
-            node = self.parse_array_creation()
+            node = self.parse_new_expression()
             node._line = line
             return node
-        token = self.consume()
+        if self.at('this'):
+            self.consume('KEYWORD', 'this')
+            node = ThisExpression()
+            node._line = line
+            return node
 
+        token = self.consume()
         if token[0] == 'NUMBER':
             node = NumberLiteral(token[1])
         elif token[0] == 'IDENTIFIER':

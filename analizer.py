@@ -1,5 +1,6 @@
 import re
 
+
 class Analizer:
     def __init__(self):
         self.PATTERNS = {
@@ -8,10 +9,11 @@ class Analizer:
             'TYPE': r'\b(byte|short|int|long|float|double|boolean|char|String|void)\b',
 
             'KEYWORD': r'\b(continue|for|new|switch|assert|default|goto|package|synchronized|boolean|do'
-                       r'|if|this|break|double|implements|throw|byte|else|import|throws'
-                       r'|case|enum|instanceof|return|catch|extends|int|short|try|char|interface'
-                       r'|void|class|finally|long|const|float|native|super|while)\b',
+                    r'|if|this|break|double|implements|throw|byte|else|import|throws'
+                    r'|case|enum|instanceof|return|catch|extends|int|short|try|char|interface'
+                    r'|void|class|finally|long|const|float|native|super|while)\b',
 
+            'ANNOTATION': r'@[a-zA-Z_][a-zA-Z0-9_]*',
             'STRING_LITERAL': r'"(?:\\.|[^"\\])*"',
             'CHAR_LITERAL': r"'(?:\\.|[^'\\])'",
             'NUMBER': r'\b\d+(\.\d+)?([eE][+-]?\d+)?\b',
@@ -24,6 +26,7 @@ class Analizer:
 
             'DELIMITER': r'[:;,.(){}\[\]]',
         }
+        self.token_lines = []
 
     def tokenize(self, code):
         self.token_lines = []
@@ -31,14 +34,12 @@ class Analizer:
         tokens = []
 
         while code:
-            # Пропускаем пробелы и переводы строк с подсчётом номера строки
             ws_match = re.match(r'\s+', code)
             if ws_match:
                 line += ws_match.group(0).count('\n')
                 code = code[ws_match.end():]
                 continue
 
-            # Однострочные комментарии
             if code.startswith('//'):
                 newline = code.find('\n')
                 if newline >= 0:
@@ -48,7 +49,6 @@ class Analizer:
                     code = ''
                 continue
 
-            # Многострочные комментарии
             if code.startswith('/*'):
                 end = code.find('*/', 2)
                 if end < 0:
