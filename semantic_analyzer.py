@@ -54,10 +54,27 @@ class SemanticAnalyzer:
     def __init__(self):
         self.symbols = SymbolTable()
         self.current_function_return_type: Optional[str] = None
+        self.current_line: Optional[int] = None
         self.loop_depth = 0
-
-        # Регистрируем встроенные функции Java
         self._init_builtins()
+
+        def visit(self, node: ASTNode):
+            """Диспетчер посещения узлов AST с отслеживанием строки"""
+            prev_line = self.current_line
+            node_line = getattr(node, '_line', None)
+            if node_line is not None:
+                self.current_line = node_line
+            try:
+                method_name = f"visit_{node.__class__.__name__}"
+                visitor = getattr(self, method_name, self.generic_visit)
+                return visitor(node)
+            except SemanticError as e:
+                msg = str(e)
+                if self.current_line is not None and not msg.startswith("Строка "):
+                    raise SemanticError(f"Строка {self.current_line}: {msg}") from None
+                raise
+            finally:
+                self.current_line = prev_line
 
     def _init_builtins(self):
         """Регистрация стандартных функций (System.out.println)"""

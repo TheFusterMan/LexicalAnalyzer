@@ -57,14 +57,22 @@ class Parser:
 
     def parse(self):
         statements = []
-        if self.current_token() and self.current_token()[1] == 'package':
-            statements.append(self.parse_package())
+        try:
+            if self.current_token() and self.current_token()[1] == 'package':
+                statements.append(self.parse_package())
 
-        while self.current_token() and self.current_token()[1] == 'import':
-            statements.append(self.parse_import())
+            while self.current_token() and self.current_token()[1] == 'import':
+                statements.append(self.parse_import())
 
-        while self.current_token() is not None:
-            statements.append(self.parse_statement())
+            while self.current_token() is not None:
+                statements.append(self.parse_statement())
+        except SyntaxError as e:
+            msg = str(e)
+            if not msg.startswith("Строка "):
+                line = self.current_line()
+                if line is not None:
+                    raise SyntaxError(f"Строка {line}: {msg}") from None
+            raise
         return Program(statements)
 
     def parse_package(self):
@@ -86,65 +94,72 @@ class Parser:
         return ImportDeclaration(path)
 
     def parse_statement(self):
-        token = self.current_token()
-        if token is None:
-            raise SyntaxError("EOF")
+        line = self.current_line()
+        node = self._parse_statement_inner()
+        if node is not None and not hasattr(node, '_line'):
+            node._line = line
+        return node
+    
+        def _parse_statement_inner_statement(self):
+            token = self.current_token()
+            if token is None:
+                raise SyntaxError("EOF")
 
-        if token[0] == 'MODIFIER' or (token[0] == 'KEYWORD' and token[1] == 'class'):
-            modifiers = self.parse_modifiers()
-            if self.at('class'):
-                return self.parse_class_declaration(modifiers)
-            if self.is_method_declaration():
-                return self.parse_method_declaration(modifiers)
-            declaration = self.parse_variable_declaration()
-            if 'final' in modifiers:
-                if declaration.value is None:
-                    raise SyntaxError("Для final требуется инициализатор")
-                return ConstantDeclaration(declaration.var_type, declaration.name, declaration.value)
-            return declaration
+            if token[0] == 'MODIFIER' or (token[0] == 'KEYWORD' and token[1] == 'class'):
+                modifiers = self.parse_modifiers()
+                if self.at('class'):
+                    return self.parse_class_declaration(modifiers)
+                if self.is_method_declaration():
+                    return self.parse_method_declaration(modifiers)
+                declaration = self.parse_variable_declaration()
+                if 'final' in modifiers:
+                    if declaration.value is None:
+                        raise SyntaxError("Для final требуется инициализатор")
+                    return ConstantDeclaration(declaration.var_type, declaration.name, declaration.value)
+                return declaration
 
-        if token[0] == 'TYPE':
-            if self.is_method_declaration():
-                return self.parse_method_declaration([])
-            return self.parse_variable_declaration()
+            if token[0] == 'TYPE':
+                if self.is_method_declaration():
+                    return self.parse_method_declaration([])
+                return self.parse_variable_declaration()
 
-        if token[0] == 'DELIMITER' and token[1] == '{':
-            return self.parse_block()
+            if token[0] == 'DELIMITER' and token[1] == '{':
+                return self.parse_block()
 
-        if token[0] == 'KEYWORD' and token[1] == 'while':
-            return self.parse_while()
+            if token[0] == 'KEYWORD' and token[1] == 'while':
+                return self.parse_while()
 
-        if token[0] == 'KEYWORD' and token[1] == 'do':
-            return self.parse_do_while()
+            if token[0] == 'KEYWORD' and token[1] == 'do':
+                return self.parse_do_while()
 
-        if token[0] == 'KEYWORD' and token[1] == 'for':
-            return self.parse_for()
+            if token[0] == 'KEYWORD' and token[1] == 'for':
+                return self.parse_for()
 
-        if token[0] == 'KEYWORD' and token[1] == 'if':
-            return self.parse_if()
+            if token[0] == 'KEYWORD' and token[1] == 'if':
+                return self.parse_if()
 
-        if token[0] == 'KEYWORD' and token[1] == 'switch':
-            return self.parse_switch()
+            if token[0] == 'KEYWORD' and token[1] == 'switch':
+                return self.parse_switch()
 
-        if token[0] == 'KEYWORD' and token[1] in ('break', 'continue'):
-            keyword = self.consume('KEYWORD')[1]
-            if keyword == 'break' and not (self.loop_depth or self.switch_depth):
-                raise SyntaxError("break допустим только внутри цикла или switch")
-            if keyword == 'continue' and not self.loop_depth:
-                raise SyntaxError("continue допустим только внутри цикла")
-            self.consume('DELIMITER', ';')
-            return BreakStatement() if keyword == 'break' else ContinueStatement()
+            if token[0] == 'KEYWORD' and token[1] in ('break', 'continue'):
+                keyword = self.consume('KEYWORD')[1]
+                if keyword == 'break' and not (self.loop_depth or self.switch_depth):
+                    raise SyntaxError("break допустим только внутри цикла или switch")
+                if keyword == 'continue' and not self.loop_depth:
+                    raise SyntaxError("continue допустим только внутри цикла")
+                self.consume('DELIMITER', ';')
+                return BreakStatement() if keyword == 'break' else ContinueStatement()
 
-        if token[0] == 'KEYWORD' and token[1] == 'return':
-            return self.parse_return()
+            if token[0] == 'KEYWORD' and token[1] == 'return':
+                return self.parse_return()
 
-        if token[0] == 'KEYWORD' and token[1] == 'const':
-            return self.parse_constant_declaration()
+            if token[0] == 'KEYWORD' and token[1] == 'const':
+                return self.parse_constant_declaration()
 
-        if token[0] == 'IDENTIFIER' or token[1] in ('++', '--', '('):
-            return self.parse_assignment_or_method_call()
+            if token[0] == 'IDENTIFIER' or token[1] in ('++', '--', '('):
+                return self.parse_assignment_or_method_call()
 
-        raise SyntaxError(f"Неизвестное начало выражения: {token}")
+            raise SyntaxError(f"Неизвестное начало выражения: {token}")
 
     def is_method_declaration(self):
         position = self.pos
@@ -481,27 +496,32 @@ class Parser:
         return expression
 
     def parse_primary(self):
+        line = self.current_line()
         if self.at('('):
             self.consume('DELIMITER', '(')
             expression = self.parse_expression()
             self.consume('DELIMITER', ')')
             return expression
         if self.at('new'):
-            return self.parse_array_creation()
+            node = self.parse_array_creation()
+            node._line = line
+            return node
         token = self.consume()
 
         if token[0] == 'NUMBER':
-            return NumberLiteral(token[1])
+            node = NumberLiteral(token[1])
         elif token[0] == 'IDENTIFIER':
-            return Identifier(token[1])
+            node = Identifier(token[1])
         elif token[0] == 'STRING_LITERAL':
-            return StringLiteral(token[1])
+            node = StringLiteral(token[1])
         elif token[0] == 'CHAR_LITERAL':
-            return CharLiteral(token[1])
+            node = CharLiteral(token[1])
         elif token[0] == 'BOOLEAN_LITERAL':
-            return BooleanLiteral(token[1])
+            node = BooleanLiteral(token[1])
         else:
-            raise SyntaxError(f"Ожидалось число, строка или идентификатор, получено {token}")
+            raise self.syntax_error(f"Ожидалось число, строка или идентификатор, получено {token}", line)
+        node._line = line
+        return node
 
     @staticmethod
     def print_ast(node, indent=""):

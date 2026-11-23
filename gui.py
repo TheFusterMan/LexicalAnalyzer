@@ -1,5 +1,6 @@
 import io
 import sys
+import re
 from datetime import datetime
 from contextlib import redirect_stdout
 import customtkinter as ctk
@@ -168,9 +169,27 @@ class ModernTranspilerStudio(ctk.CTk):
         self.tab_ast = self.dock_panel.add("Дерево AST")
         self.tab_lex = self.dock_panel.add("Таблица лексем")
 
+        # Панель с кнопкой копирования внутри вкладки "Терминал транслятора"
+        log_bar = ctk.CTkFrame(self.tab_log, fg_color="transparent", height=28)
+        log_bar.pack(fill="x", pady=(0, 4))
+
+        self.btn_copy_log = ctk.CTkButton(
+            log_bar,
+            text="📋 Копировать вывод",
+            command=self.copy_log_to_clipboard,
+            width=150,
+            height=26,
+            font=ctk.CTkFont(size=12),
+            fg_color="#E2E8F0",
+            hover_color="#CBD5E1",
+            text_color="#0F172A"
+        )
+        self.btn_copy_log.pack(side="right")
+
         self.txt_log = ctk.CTkTextbox(self.tab_log, font=ctk.CTkFont(family="Consolas", size=12), wrap="word")
         self.txt_log.pack(fill="both", expand=True)
 
+        # ВОТ ЭТИ ПОЛЯ ДОЛЖНЫ ОСТАТЬСЯ НА МЕСТЕ:
         self.txt_ast = ctk.CTkTextbox(self.tab_ast, font=ctk.CTkFont(family="Consolas", size=12), wrap="none")
         self.txt_ast.pack(fill="both", expand=True)
 
@@ -185,6 +204,10 @@ class ModernTranspilerStudio(ctk.CTk):
         if not code:
             messagebox.showwarning("Предупреждение", "Поле исходного Java-кода пусто.")
             return
+
+        # Перед запуском сбрасываем прошлую красную подсветку ошибки
+        self.src_editor.tag_remove("err_line", "1.0", "end")
+        self.src_editor.tag_config("err_line", background="#FEE2E2")
 
         # Очистка панелей вывода
         self.out_editor.delete("1.0", "end")
@@ -204,8 +227,8 @@ class ModernTranspilerStudio(ctk.CTk):
             formatted_tokens = "\n".join([f"[{t[0]:<16}]  '{t[1]}'" for t in tokens])
             self.txt_lex.insert("1.0", formatted_tokens)
 
-            # 2. Синтаксический анализ (AST)
-            parser = Parser(tokens)
+            # 2. Синтаксический анализ (AST) — передаём номера строк!
+            parser = Parser(tokens, analizer.token_lines)
             ast = parser.parse()
 
             ast_stream = io.StringIO()
@@ -236,8 +259,16 @@ class ModernTranspilerStudio(ctk.CTk):
 
         except (SyntaxError, SemanticError) as err:
             self.lbl_status_badge.configure(text="● Статус: Ошибка", text_color="#EF4444")
-            self.txt_log.insert("1.0", f"[{now}] [COMPILER ERROR]:\n{str(err)}\n")
+            err_text = str(err)
+            self.txt_log.insert("1.0", f"[{now}] [COMPILER ERROR]:\n{err_text}\n")
             self.dock_panel.set("Терминал транслятора")
+
+            # Подсвечиваем ошибочную строку в исходнике светло-красным
+            m = re.search(r"Строка\s+(\d+):", err_text)
+            if m:
+                err_line_num = m.group(1)
+                self.src_editor.tag_add("err_line", f"{err_line_num}.0", f"{err_line_num}.end")
+                self.src_editor.see(f"{err_line_num}.0")
         except Exception as err:
             self.lbl_status_badge.configure(text="● Статус: Сбой", text_color="#EF4444")
             self.txt_log.insert("1.0", f"[{now}] [SYSTEM CRITICAL]:\n{str(err)}\n")
@@ -245,7 +276,8 @@ class ModernTranspilerStudio(ctk.CTk):
 
     def open_file_dialog(self):
         fpath = filedialog.askopenfilename(
-            filetypes=[("Java files", "*.java"), ("Text files", "*.txt"), ("All files", "*.*")]
+            title="Выберите Java-файл",
+            filetypes=[("All files", "*.*"), ("Java files", "*.java"), ("Text files", "*.txt")]
         )
         if fpath:
             with open(fpath, "r", encoding="utf-8") as f:
@@ -271,6 +303,12 @@ class ModernTranspilerStudio(ctk.CTk):
             self.clipboard_append(code)
             messagebox.showinfo("Буфер обмена", "Целевой код C++ успешно скопирован!")
 
+    def copy_log_to_clipboard(self):
+        log_text = self.txt_log.get("1.0", "end-1c")
+        if log_text.strip():
+            self.clipboard_clear()
+            self.clipboard_append(log_text)
+            messagebox.showinfo("Буфер обмена", "Вывод терминала скопирован в буфер обмена!")
 
 if __name__ == "__main__":
     app = ModernTranspilerStudio()

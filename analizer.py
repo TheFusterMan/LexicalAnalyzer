@@ -26,33 +26,49 @@ class Analizer:
         }
 
     def tokenize(self, code):
-        code = code.lstrip()
+        self.token_lines = []
+        line = 1
         tokens = []
 
         while code:
-            # Комментарии пропускаются между токенами, чтобы // и /* внутри
-            # строковых и символьных литералов оставались частью литерала.
+            # Пропускаем пробелы и переводы строк с подсчётом номера строки
+            ws_match = re.match(r'\s+', code)
+            if ws_match:
+                line += ws_match.group(0).count('\n')
+                code = code[ws_match.end():]
+                continue
+
+            # Однострочные комментарии
             if code.startswith('//'):
                 newline = code.find('\n')
-                code = code[newline + 1:].lstrip() if newline >= 0 else ''
+                if newline >= 0:
+                    line += 1
+                    code = code[newline + 1:]
+                else:
+                    code = ''
                 continue
+
+            # Многострочные комментарии
             if code.startswith('/*'):
                 end = code.find('*/', 2)
                 if end < 0:
-                    raise SyntaxError("Незакрытый многострочный комментарий")
-                code = code[end + 2:].lstrip()
+                    raise SyntaxError(f"Строка {line}: Незакрытый многострочный комментарий")
+                line += code[:end + 2].count('\n')
+                code = code[end + 2:]
                 continue
-            match = None
 
+            match = None
             for token_type, pattern in self.PATTERNS.items():
                 match = re.match(pattern, code)
-
                 if match:
-                    tokens.append((token_type, match.group(0)))
-                    code = code[len(match.group(0)):].lstrip()
+                    lexeme = match.group(0)
+                    tokens.append((token_type, lexeme))
+                    self.token_lines.append(line)
+                    line += lexeme.count('\n')
+                    code = code[len(lexeme):]
                     break
 
             if not match:
-                raise SyntaxError(f"Illegal character '{code[0]}'")
+                raise SyntaxError(f"Строка {line}: Illegal character '{code[0]}'")
 
         return tokens
