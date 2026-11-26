@@ -72,13 +72,6 @@ class ModernTranspilerStudio(ctk.CTk):
         )
         self.btn_load.grid(row=3, column=0, padx=16, pady=4, sticky="ew")
 
-        self.btn_copy = ctk.CTkButton(
-            self.sidebar_frame, text="📋  Скопировать C++", command=self.copy_to_clipboard,
-            fg_color="#FFFFFF", hover_color="#E2E8F0", text_color="#0F172A",
-            border_width=1, border_color="#CBD5E1", height=34, corner_radius=6
-        )
-        self.btn_copy.grid(row=4, column=0, padx=16, pady=4, sticky="ew")
-
         self.btn_clear = ctk.CTkButton(
             self.sidebar_frame, text="🗑  Очистить всё", command=self.reset_all_views,
             fg_color="#FEE2E2", hover_color="#FECACA", text_color="#B91C1C",
